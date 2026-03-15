@@ -7,8 +7,12 @@ import streamlit as st
 from agents import Runner, SQLiteSession, InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered
 from models import UserAccountContext
 from my_agents.triage_agent import triage_agent
+from my_agents.handoff_registry import wire_all_agent_handoffs
 
 client = OpenAI()
+wire_all_agent_handoffs()
+
+MAX_HANDOFFS_PER_MESSAGE = 2
 
 user_account_ctx = UserAccountContext(
     customer_id=1,
@@ -50,6 +54,7 @@ async def run_agent(message):
         response = ""
 
         st.session_state["text_placeholder"] = text_placeholder
+        handoff_count = 0
 
         try:
 
@@ -70,6 +75,14 @@ async def run_agent(message):
                 elif event.type == "agent_updated_stream_event":
 
                     if st.session_state["agent"].name != event.new_agent.name:
+                        handoff_count += 1
+                        if handoff_count > MAX_HANDOFFS_PER_MESSAGE:
+                            st.session_state.get("text_placeholder", text_placeholder).empty()
+                            st.write(
+                                "죄송합니다. 문의를 다시 해주세요. 담당자에게 연결해드리겠습니다."
+                            )
+                            st.session_state["agent"] = triage_agent
+                            break
                         
                         st.write(f"🤖 Transfered from {st.session_state['agent'].name} to {event.new_agent.name}")
 
@@ -101,8 +114,8 @@ if message:
         asyncio.run(run_agent(message))
 
 
-with st.sidebar:
-    reset = st.button("Reset memory")
-    if reset:
-        asyncio.run(session.clear_session())
-    st.write(asyncio.run(session.get_items()))
+# with st.sidebar:
+#     reset = st.button("Reset memory")
+#     if reset:
+#         asyncio.run(session.clear_session())
+#     st.write(asyncio.run(session.get_items()))

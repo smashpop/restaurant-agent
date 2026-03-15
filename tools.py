@@ -392,6 +392,184 @@ def export_account_data(context: UserAccountContext, data_types: str) -> str:
     """.strip()
 
 
+# =============================================================================
+# MENU TOOLS
+# =============================================================================
+
+
+@function_tool
+def lookup_menu_items(context: UserAccountContext, query: str) -> str:
+    """
+    Look up menu items, descriptions, and prices matching the customer's query.
+
+    Args:
+        query: Dish name, category, or keyword to search (e.g. "pasta", "vegan", "dessert")
+    """
+    sample_items = [
+        {"name": "Grilled Salmon", "category": "Main", "price": 24.99, "description": "Atlantic salmon with lemon herb butter"},
+        {"name": "Margherita Pizza", "category": "Pizza", "price": 16.99, "description": "Tomato, fresh mozzarella, basil"},
+        {"name": "Caesar Salad", "category": "Starter", "price": 12.99, "description": "Romaine, parmesan, croutons, caesar dressing"},
+        {"name": "Truffle Pasta", "category": "Main", "price": 22.99, "description": "Fresh tagliatelle with black truffle cream"},
+        {"name": "Tiramisu", "category": "Dessert", "price": 9.99, "description": "Classic Italian tiramisu with espresso"},
+        {"name": "Veggie Burger", "category": "Main", "price": 14.99, "description": "Plant-based patty with avocado and house sauce"},
+    ]
+
+    keyword = query.lower()
+    matches = [
+        item for item in sample_items
+        if keyword in item["name"].lower()
+        or keyword in item["category"].lower()
+        or keyword in item["description"].lower()
+    ]
+
+    if not matches:
+        matches = sample_items[:3]
+
+    lines = [f"• {i['name']} ({i['category']}) — ${i['price']:.2f}: {i['description']}" for i in matches]
+    return f"🍽️ Menu results for '{query}':\n" + "\n".join(lines)
+
+
+@function_tool
+def check_allergens(context: UserAccountContext, dish_name: str) -> str:
+    """
+    Return allergen and dietary information for a specific dish.
+
+    Args:
+        dish_name: Name of the dish to check
+    """
+    allergen_data = {
+        "grilled salmon": {"allergens": ["fish"], "dietary": ["gluten-free", "dairy-free"]},
+        "margherita pizza": {"allergens": ["gluten", "dairy"], "dietary": ["vegetarian"]},
+        "caesar salad": {"allergens": ["gluten", "dairy", "eggs", "fish (anchovies)"], "dietary": []},
+        "truffle pasta": {"allergens": ["gluten", "dairy", "eggs"], "dietary": ["vegetarian"]},
+        "tiramisu": {"allergens": ["gluten", "dairy", "eggs"], "dietary": ["vegetarian"]},
+        "veggie burger": {"allergens": ["gluten", "soy"], "dietary": ["vegan", "dairy-free"]},
+    }
+
+    key = dish_name.lower().strip()
+    info = allergen_data.get(key)
+
+    if not info:
+        return (
+            f"⚠️ Allergen details for '{dish_name}' are not on record in our system. "
+            "Please ask a staff member in-restaurant for the most up-to-date information."
+        )
+
+    allergens_str = ", ".join(info["allergens"]) if info["allergens"] else "None listed"
+    dietary_str = ", ".join(info["dietary"]) if info["dietary"] else "None"
+
+    return f"""
+🥦 Allergen Info: {dish_name.title()}
+⚠️  Contains: {allergens_str}
+✅ Dietary labels: {dietary_str}
+ℹ️  Always inform staff of severe allergies before ordering.
+    """.strip()
+
+
+@function_tool
+def get_daily_specials(context: UserAccountContext) -> str:
+    """
+    Return today's chef specials and promotional items.
+    """
+    specials = [
+        {"name": "Lobster Bisque", "price": 14.99, "note": "Chef's special — limited availability"},
+        {"name": "Wagyu Beef Burger", "price": 28.99, "note": "Weekend special"},
+        {"name": "Seasonal Berry Tart", "price": 10.99, "note": "Dessert of the day"},
+    ]
+
+    lines = [f"⭐ {s['name']} — ${s['price']:.2f}  ({s['note']})" for s in specials]
+    return "🍴 Today's Specials:\n" + "\n".join(lines)
+
+
+# =============================================================================
+# RESERVATION TOOLS
+# =============================================================================
+
+
+@function_tool
+def check_table_availability(
+    context: UserAccountContext, date: str, time: str, party_size: int
+) -> str:
+    """
+    Check available tables for a given date, time, and party size.
+
+    Args:
+        date: Desired date in YYYY-MM-DD format
+        time: Desired time in HH:MM format (24-hour)
+        party_size: Number of guests
+    """
+    available_slots = ["18:00", "18:30", "19:00", "20:30", "21:00"]
+    requested = time.strip()
+
+    if requested in available_slots:
+        availability = f"✅ {time} is available for {party_size} guests on {date}."
+    else:
+        alternatives = ", ".join(available_slots[:3])
+        availability = (
+            f"❌ {time} is fully booked for {party_size} guests on {date}. "
+            f"Available slots: {alternatives}"
+        )
+
+    return f"📅 Table Availability — {date}\n{availability}"
+
+
+@function_tool
+def make_reservation(
+    context: UserAccountContext, date: str, time: str, party_size: int, special_requests: str = ""
+) -> str:
+    """
+    Create a new table reservation for the customer.
+
+    Args:
+        date: Reservation date in YYYY-MM-DD format
+        time: Reservation time in HH:MM format (24-hour)
+        party_size: Number of guests
+        special_requests: Optional special requests (e.g. high chair, window seat, anniversary)
+    """
+    reservation_id = f"RES-{random.randint(100000, 999999)}"
+
+    return f"""
+✅ Reservation Confirmed
+🔖 Reservation ID: {reservation_id}
+👤 Name: {context.name}
+📅 Date: {date}  ⏰ Time: {time}
+👥 Party size: {party_size}
+💬 Special requests: {special_requests if special_requests else 'None'}
+📧 Confirmation sent to: {context.email}
+ℹ️  Please arrive 5 minutes early. Cancellations accepted up to 2 hours before.
+    """.strip()
+
+
+@function_tool
+def cancel_or_modify_reservation(
+    context: UserAccountContext, reservation_id: str, action: str, new_details: str = ""
+) -> str:
+    """
+    Cancel or modify an existing reservation.
+
+    Args:
+        reservation_id: The reservation ID to cancel or modify
+        action: Either 'cancel' or 'modify'
+        new_details: For modifications, describe the changes (date/time/party size)
+    """
+    if action.lower() == "cancel":
+        return f"""
+🚫 Reservation Cancelled
+🔖 Reservation ID: {reservation_id}
+👤 Name: {context.name}
+📧 Cancellation confirmation sent to: {context.email}
+ℹ️  We hope to welcome you another time.
+        """.strip()
+    else:
+        return f"""
+✏️ Reservation Modified
+🔖 Reservation ID: {reservation_id}
+📝 Changes requested: {new_details if new_details else 'Not specified'}
+📧 Updated confirmation will be sent to: {context.email}
+ℹ️  Please confirm any changes with the restaurant directly if time-sensitive.
+        """.strip()
+
+
 class AgentToolUsageLoggingHooks(AgentHooks):
 
     async def on_tool_start(

@@ -1,4 +1,4 @@
-from agents import Agent, GuardrailFunctionOutput, RunContextWrapper, Runner, input_guardrail
+from agents import Agent, RunContextWrapper
 # from tools import (
 #     run_diagnostic_check,
 #     provide_troubleshooting_steps,
@@ -7,8 +7,9 @@ from agents import Agent, GuardrailFunctionOutput, RunContextWrapper, Runner, in
 # )
 from output_guardrails import output_guardrail
 from tools import AgentToolUsageLoggingHooks
+from my_agents.common_guardrails import off_topic_guardrail
 
-from models import UserAccountContext, InputGuardRailOutput
+from models import UserAccountContext
 
 
 def dynamic_complaint_agent_instructions(
@@ -28,6 +29,12 @@ def dynamic_complaint_agent_instructions(
     - Offer an appropriate resolution when possible
     - Escalate serious issues to a manager or restaurant leadership when necessary
 
+    WHEN YOU RECEIVE A HANDOFF FROM TRIAGE:
+    - Treat the structured handoff data as your primary working context
+    - Use the handoff fields `issue_type`, `issue_description`, and `reason` to continue the case without asking the customer to repeat everything
+    - If the handoff summary clearly describes a complaint or escalation case, handle it directly and do not hand the case back to Triage
+    - Ask one short clarifying question only if the handoff summary is incomplete and you genuinely need missing complaint details
+
     COMPLAINT TYPES YOU HANDLE:
     - Incorrect or missing items
     - Late delivery or delayed service
@@ -43,6 +50,7 @@ def dynamic_complaint_agent_instructions(
     - Be concise, respectful, and solution-oriented
     - Do not blame the customer, staff, or another department
     - Do not promise anything outside normal restaurant policy unless escalation is required
+    - Keep every final customer-facing reply to 5 sentences or fewer
 
     COMPLAINT HANDLING PROCESS:
     1. Acknowledge the issue and validate the customer's experience
@@ -74,59 +82,17 @@ def dynamic_complaint_agent_instructions(
 
     If escalation is needed, clearly say that you are escalating the matter to a manager and explain the reason.
 
+    CROSS-AGENT HANDOFF RULES:
+    - If the request is outside complaint scope, hand off to the Triage Agent for re-routing
+    - Do not ask the user to choose an agent; route internally via Triage Agent
+    - Keep the complaint context summary in your handoff so the next agent can continue smoothly
+    - Do not hand off if you can complete the request with your own scope and tools
+    - If intent is mixed or unclear, ask one clarifying question instead of handing off
+    - Never perform repeated back-and-forth handoffs in a single user turn
+    - If Triage has already routed a clear complaint or escalation case to you, treat that routing decision as authoritative
+
     {"PRIORITY HANDLING: Because this customer is not on the basic tier, prioritize faster follow-up and offer manager escalation sooner when appropriate." if wrapper.context.tier != "basic" else ""}
     """
-
-input_guardrail_agent = Agent(
-    name="Input Guardrail Agent",
-    instructions="""
-    Classify the user's message with two booleans:
-    - is_off_topic: true if the request is not related to restaurant customer support
-    - is_inappropriate: true if the message contains abusive, insulting, hateful, sexually explicit, threatening, or otherwise inappropriate language
-
-    Ensure the user's request is related to restaurant customer support and not off-topic.
-
-    Consider it ON-TOPIC only when the user asks about restaurant-related matters such as:
-    - menu, ingredients, allergens, and nutrition
-    - reservations, waitlist, table availability, and operating hours
-    - dine-in, takeout, delivery, and order status
-    - pricing, promotions, payments, receipts, and refunds for restaurant orders
-    - location, parking, accessibility, and contact details
-    - complaints, service feedback, and issue resolution related to restaurant service
-
-    Consider it OFF-TOPIC when the user asks about unrelated domains (for example coding help, finance advice, travel planning, general trivia, or any non-restaurant business support).
-
-    If the request is off-topic or inappropriate, return a clear reason for the tripwire.
-    You may do brief small talk at the beginning, but do not provide help for requests unrelated to restaurant customer support.
-
-    Output rules:
-    - Set both booleans explicitly (true or false)
-    - If both conditions apply, set both to true
-    - Always provide a short reason
-""",
-    output_type=InputGuardRailOutput,
-)
-
-@input_guardrail
-async def off_topic_guardrail(
-    wrapper: RunContextWrapper[UserAccountContext],
-    agent: Agent[UserAccountContext],
-    input: str,
-):
-    result = await Runner.run(
-        input_guardrail_agent,
-        input,
-        context=wrapper.context,
-    )
-
-    return GuardrailFunctionOutput(
-        output_info=result.final_output,
-        tripwire_triggered=(
-            result.final_output.is_off_topic
-            or result.final_output.is_inappropriate
-        ),
-    )
-
 
 complaint_agent = Agent(
     name="Complaint Agent",
